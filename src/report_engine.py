@@ -84,6 +84,7 @@ class ReportEngine(ABC):
         dockerfile_path: str = "Dockerfile",
         temp_build_dir: str = "temp_build",
         entry_script_name: str = "entrypoint.py",
+        output_image_path: Optional[str] = None,  # Path to save the image as a .tar file
     ):
         """
         Creates a Docker image for the report engine using Jinja2 templates.
@@ -94,6 +95,7 @@ class ReportEngine(ABC):
             dockerfile_path (str): Path to save the generated Dockerfile.
             temp_build_dir (str): Temporary build directory to act as the Docker context.
             entry_script_name (str): Name of the entrypoint script to be created.
+            output_image_path (str, optional): Path to save the Docker image as a .tar file.
         """
         # Ensure the temporary build directory exists
         temp_build_path = Path(temp_build_dir)
@@ -147,8 +149,14 @@ class ReportEngine(ABC):
         try:
             subprocess.run(build_command, check=True)
             logging.info(f"Docker image '{image_name}' created successfully.")
+            
+            # Save the image to a .tar file if output_image_path is specified
+            if output_image_path:
+                save_command = ["docker", "save", "-o", output_image_path, image_name]
+                subprocess.run(save_command, check=True)
+                logging.info(f"Docker image '{image_name}' saved to {output_image_path}.")
         except subprocess.CalledProcessError as e:
-            logging.error(f"Failed to build Docker image: {e}")
+            logging.error(f"Failed to build or save Docker image: {e}")
             raise
         finally:
             # Clean up temporary build directory (optional)

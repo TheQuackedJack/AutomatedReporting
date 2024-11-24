@@ -37,4 +37,7 @@ class SalesReportEngine(ReportEngine):
 
 if __name__ == "__main__":
     engine = SalesReportEngine()
-    engine.create_docker_image(image_name="sales-report-engine")
+    engine.create_docker_image(
+        image_name="sales-report-engine",
+        output_image_path="sales-report-engine.tar"
+    )
