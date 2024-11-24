@@ -1,63 +1,56 @@
-# example.py
+# test_sales_report_engine.py
 
 import logging
-import os
-import shutil
+from typing import List
 from pydantic import BaseModel, Field
 from report_engine import ReportEngine
 
-# Pydantic models
-class ReportInputModel(BaseModel):
-    title: str
-    content: str
+class SalesReportInputModel(BaseModel):
+    report_title: str = Field(..., description="The title of the sales report.")
+    sales_data: List[float] = Field(..., description="A list of sales figures.")
+    include_summary: bool = Field(
+        default=True, description="Whether to include a summary section."
+    )
 
-class ReportDistributionModel(BaseModel):
-    target_folder: str
-    output_path: str = Field(..., description="Path where the report will be saved.")
-
-# Implementation class
-class SimpleTextReportEngine(ReportEngine):
+class SalesReportEngine(ReportEngine):
     def __init__(self):
-        super().__init__(ReportInputModel, ReportDistributionModel)
+        super().__init__(input_model=SalesReportInputModel)
 
-    def run(self, report_config: dict):
-        try:
-            self._validate_config(self.input_model, report_config)
-            logging.info("Generating report...")
+    def run_report(self, input_config: dict) -> bytes:
+        """
+        Generates a sales report based on the input configuration.
+        """
+        # Validate and parse the input configuration using the input model
+        config = self.input_model(**input_config)
 
-            # Use a temporary output path during generation
-            temp_output_path = "./temp_report.txt"
+        # Start building the report content
+        report_lines = [f"Report Title: {config.report_title}", "-" * 40]
 
-            # Generate the report
-            with open(temp_output_path, "w") as f:
-                f.write(f"Title: {report_config['title']}\n\n")
-                f.write(report_config['content'])
-            logging.info(f"Report successfully generated at {temp_output_path}")
+        # Add sales data
+        report_lines.append("Sales Data:")
+        for idx, sale in enumerate(config.sales_data, start=1):
+            report_lines.append(f"  Item {idx}: ${sale:.2f}")
 
-            # Store the temporary output path for use in distribution
-            self.temp_output_path = temp_output_path
-        except Exception as e:
-            logging.error(f"Failed to generate report: {e}")
-            raise
+        # Optionally include a summary
+        if config.include_summary:
+            total_sales = sum(config.sales_data)
+            average_sales = (
+                total_sales / len(config.sales_data) if config.sales_data else 0
+            )
+            report_lines.append("-" * 40)
+            report_lines.append(f"Total Sales: ${total_sales:.2f}")
+            report_lines.append(f"Average Sale: ${average_sales:.2f}")
 
-    def distribute(self, distribution_config: dict):
-        try:
-            self._validate_config(self.distribution_model, distribution_config)
-            logging.info("Distributing report...")
+        # Join the lines and encode the content as bytes
+        report_content = "\n".join(report_lines)
+        return report_content.encode("utf-8")
 
-            output_path = distribution_config.get('output_path')
-            target_folder = distribution_config.get('target_folder')
+if __name__ == "__main__":
+    # Configure logging to display messages
+    logging.basicConfig(level=logging.INFO)
 
-            if not hasattr(self, 'temp_output_path'):
-                raise ValueError("No report generated to distribute.")
+    # Instantiate the report engine
+    report_engine = SalesReportEngine()
 
-            # Ensure the target folder exists
-            os.makedirs(target_folder, exist_ok=True)
-
-            # Move the report to the desired output path within the target folder
-            final_output_path = os.path.join(target_folder, output_path)
-            shutil.move(self.temp_output_path, final_output_path)
-            logging.info(f"Report successfully moved to {final_output_path}")
-        except Exception as e:
-            logging.error(f"Failed to distribute report: {e}")
-            raise
+    # Run the CLI
+    report_engine.run_cli()
