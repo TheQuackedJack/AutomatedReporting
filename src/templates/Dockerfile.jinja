@@ -1,0 +1,13 @@
+FROM {{ base_image }}
+WORKDIR /app
+
+# Copy required files
+{% for file in files_to_copy %}
+COPY {{ file }} /app/
+{% endfor %}
+
+# Install dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Set the entrypoint
+ENTRYPOINT ["python", "{{ entry_script_name }}"]
