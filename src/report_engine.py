@@ -1,7 +1,9 @@
+# report_engine.py
+
 import json
 import logging
 from abc import ABC, abstractmethod
-from typing import Type, Optional, List
+from typing import Type, Optional
 from pydantic import BaseModel, ValidationError
 import typer
 from jinja2 import Environment, FileSystemLoader
@@ -10,6 +12,7 @@ import inspect
 import subprocess
 import os
 import shutil
+import sys
 
 
 class ReportEngine(ABC):
@@ -19,7 +22,7 @@ class ReportEngine(ABC):
         """
         if not input_model or not issubclass(input_model, BaseModel):
             raise ValueError("The input model must be a valid Pydantic model.")
-        
+
         self.input_model = input_model
         self.app = typer.Typer(help=f"CLI for {self.__class__.__name__}")
         self.app.command("generate-report")(self._generate_report_cli)
@@ -40,22 +43,21 @@ class ReportEngine(ABC):
         """
         pass
 
-    def generate_report(self, input_config: dict, output_file: str) -> None:
+    def generate_report(self, input_config: dict) -> bytes:
         """
-        Validate the input configuration and write the generated report to a file.
+        Validate the input configuration and return the generated report as bytes.
         """
         self._validate_config(input_config)
         report_data = self.run_report(input_config)
-        with open(output_file, "wb") as f:
-            f.write(report_data)
+        return report_data
 
     def _generate_report_cli(
         self,
-        config_file: Path = typer.Option(
+        config_file: Optional[Path] = typer.Option(
             None, "--config-file", "-c", help="Path to the JSON configuration file."
         ),
-        output_file: str = typer.Option(
-            ..., "--output-file", "-o", help="Path to the output file."
+        output_file: Optional[str] = typer.Option(
+            None, "--output-file", "-o", help="Path to the output file."
         ),
     ):
         """
@@ -65,17 +67,27 @@ class ReportEngine(ABC):
             with open(config_file, "r") as f:
                 input_config = json.load(f)
         else:
-            raise ValueError("A config file is required.")
-        
-        self.generate_report(input_config, output_file)
-        typer.echo(f"Report generated at {output_file}.")
+            # Read from stdin
+            try:
+                input_config = json.load(sys.stdin)
+            except json.JSONDecodeError as e:
+                raise ValueError(f"Invalid JSON input: {e}")
+
+        report_data = self.generate_report(input_config)
+
+        if output_file:
+            with open(output_file, "wb") as f:
+                f.write(report_data)
+            typer.echo(f"Report generated at {output_file}.")
+        else:
+            # Write to stdout
+            sys.stdout.buffer.write(report_data)
 
     def run_cli(self):
         """
         Run the CLI application.
         """
         self.app()
-
 
     def create_docker_image(
         self,
@@ -85,7 +97,7 @@ class ReportEngine(ABC):
         temp_build_dir: str = "temp_build",
         entry_script_name: str = "entrypoint.py",
         output_image_path: Optional[str] = None,  # Path to save the image as a .tar file
-        engine_requirment_path: Optional[str] = None,  # Path to user-defined requirements
+        engine_requirement_path: Optional[str] = None,  # Path to user-defined requirements
     ):
         """
         Creates a Docker image for the report engine using Jinja2 templates.
@@ -97,7 +109,7 @@ class ReportEngine(ABC):
             temp_build_dir (str): Temporary build directory to act as the Docker context.
             entry_script_name (str): Name of the entrypoint script to be created.
             output_image_path (str, optional): Path to save the Docker image as a .tar file.
-            engine_requirment_path (str, optional): Path to user-defined requirements.txt.
+            engine_requirement_path (str, optional): Path to user-defined requirements.txt.
         """
         # Ensure the temporary build directory exists
         temp_build_path = Path(temp_build_dir)
@@ -121,7 +133,7 @@ class ReportEngine(ABC):
 
         # Paths for requirements
         abstract_requirements_path = Path(__file__).parent.parent / "requirements.txt"  # "../requirements.txt"
-        user_requirements = Path(engine_requirment_path) if engine_requirment_path else None
+        user_requirements = Path(engine_requirement_path) if engine_requirement_path else None
 
         # Merge requirements
         merged_requirements = set()
@@ -147,11 +159,19 @@ class ReportEngine(ABC):
         shutil.copy2(base_class_file, temp_build_path / base_class_filename)
         shutil.copy2(__file__, temp_build_path / Path(__file__).name)
 
+        # Add the module where the input_model is defined
+        input_model_file = inspect.getfile(self.input_model)
+        input_model_filename = Path(input_model_file).name
+        shutil.copy2(input_model_file, temp_build_path / input_model_filename)
+
+        # Files to copy
+        files_to_copy = ["requirements.txt", entry_script_name,
+                         Path(subclass_file).name, Path(__file__).name, input_model_filename]
+
         # Generate Dockerfile in the temporary build directory
         dockerfile_content = docker_template.render(
             base_image=base_image,
-            files_to_copy=["requirements.txt", entry_script_name, 
-                        Path(subclass_file).name, Path(__file__).name],
+            files_to_copy=files_to_copy,
             entry_script_name=entry_script_name,
         )
         with open(temp_build_path / dockerfile_path, "w") as f:
@@ -164,7 +184,7 @@ class ReportEngine(ABC):
         try:
             subprocess.run(build_command, check=True)
             logging.info(f"Docker image '{image_name}' created successfully.")
-            
+
             # Save the image to a .tar file if output_image_path is specified
             if output_image_path:
                 save_command = ["docker", "save", "-o", output_image_path, image_name]

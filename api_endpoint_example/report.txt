@@ -1,8 +1,0 @@
-Report Title: Monthly Sales Report
-----------------------------------------
-Sale: $1500.00
-Sale: $2300.50
-Sale: $1999.99
-Sale: $3200.75
-Total: $9001.24
-Average: $2250.31

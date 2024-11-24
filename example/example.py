@@ -1,9 +1,10 @@
+# example.py
+
 import sys
 import os
 
 # Add the src folder to sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
-
 
 from report_engine import ReportEngine
 from pydantic import BaseModel
