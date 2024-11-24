@@ -85,6 +85,7 @@ class ReportEngine(ABC):
         temp_build_dir: str = "temp_build",
         entry_script_name: str = "entrypoint.py",
         output_image_path: Optional[str] = None,  # Path to save the image as a .tar file
+        engine_requirment_path: Optional[str] = None,  # Path to user-defined requirements
     ):
         """
         Creates a Docker image for the report engine using Jinja2 templates.
@@ -96,6 +97,7 @@ class ReportEngine(ABC):
             temp_build_dir (str): Temporary build directory to act as the Docker context.
             entry_script_name (str): Name of the entrypoint script to be created.
             output_image_path (str, optional): Path to save the Docker image as a .tar file.
+            engine_requirment_path (str, optional): Path to user-defined requirements.txt.
         """
         # Ensure the temporary build directory exists
         temp_build_path = Path(temp_build_dir)
@@ -109,18 +111,31 @@ class ReportEngine(ABC):
         entry_template = env.get_template("entrypoint.jinja")
 
         # Detect the module and class where the subclass is defined
-        subclass_file = inspect.getfile(self.__class__)  # File where the subclass is defined
-        module_name = Path(subclass_file).stem          # Module name (without .py)
+        subclass_file = inspect.getfile(self.__class__)
+        module_name = Path(subclass_file).stem
         class_name = self.__class__.__name__
 
         # Detect the file where the abstract ReportEngine class is defined
-        base_class_file = inspect.getfile(type(self))   # File where ReportEngine is defined
+        base_class_file = inspect.getfile(type(self))
         base_class_filename = Path(base_class_file).name
 
-        # Write requirements.txt
-        requirements = ["pydantic", "typer", "jinja2"]
+        # Paths for requirements
+        abstract_requirements_path = Path(__file__).parent.parent / "requirements.txt"  # "../requirements.txt"
+        user_requirements = Path(engine_requirment_path) if engine_requirment_path else None
+
+        # Merge requirements
+        merged_requirements = set()
+        if abstract_requirements_path.exists():
+            with open(abstract_requirements_path, "r") as f:
+                merged_requirements.update(f.read().splitlines())
+
+        if user_requirements and user_requirements.exists():
+            with open(user_requirements, "r") as f:
+                merged_requirements.update(f.read().splitlines())
+
+        # Write merged requirements.txt
         with open(temp_build_path / "requirements.txt", "w") as f:
-            f.write("\n".join(requirements))
+            f.write("\n".join(merged_requirements))
 
         # Generate entrypoint.py
         entry_script_content = entry_template.render(module_name=module_name, class_name=class_name)

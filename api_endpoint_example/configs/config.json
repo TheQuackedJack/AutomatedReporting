@@ -1,0 +1,5 @@
+{
+  "report_title": "Monthly Sales Report",
+  "sales_data": [1500.00, 2300.50, 1999.99, 3200.75],
+  "include_summary": true
+}
